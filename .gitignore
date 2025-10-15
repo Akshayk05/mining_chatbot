@@ -1,0 +1,19 @@
+# Virtual Environment
+venv/
+env/
+
+# Environment Variables
+.env
+
+# Python Cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# PDFs (optional - if you don't want to commit them)
+*.pdf
+
+# IDE
+.vscode/
+.idea/
