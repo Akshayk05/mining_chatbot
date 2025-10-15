@@ -10,14 +10,29 @@ import io
 import os
 from openai import OpenAI
 from dotenv import load_dotenv
-from typing import Optional, List
+from typing import List
 import uvicorn
+from contextlib import asynccontextmanager
 
 # Load environment variables
 load_dotenv()
 
-# Initialize FastAPI app
-app = FastAPI(title="Mining Safety Chatbot API", version="1.0.0")
+# Lifespan events for startup and shutdown
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    print("Loading PDFs...")
+    await load_pdfs_on_startup()
+    yield
+    # Shutdown (if needed)
+    print("Shutting down...")
+
+# Initialize FastAPI app with lifespan
+app = FastAPI(
+    title="Mining Safety Chatbot API", 
+    version="1.0.0",
+    lifespan=lifespan
+)
 
 # CORS middleware
 app.add_middleware(
@@ -52,8 +67,7 @@ class HealthResponse(BaseModel):
     pdfs_loaded: int
     chunks_available: int
 
-
-# Helper functions
+# Helper functions (same as before)
 def chunk_text(text, chunk_size=1000, overlap=200):
     """Split text into overlapping chunks"""
     chunks = []
@@ -81,7 +95,6 @@ def chunk_text(text, chunk_size=1000, overlap=200):
     
     return chunks
 
-
 def create_simple_embedding(text):
     """Create a simple word frequency embedding"""
     clean_text = text.lower()
@@ -93,7 +106,6 @@ def create_simple_embedding(text):
     
     word_freq = Counter(stemmed_words)
     return dict(word_freq)
-
 
 def cosine_similarity(vec1, vec2):
     """Calculate cosine similarity"""
@@ -108,7 +120,6 @@ def cosine_similarity(vec1, vec2):
     
     return dot_product / (mag1 * mag2)
 
-
 def extract_text_from_pdf_bytes(pdf_bytes):
     """Extract text from PDF bytes"""
     pdf_file = io.BytesIO(pdf_bytes)
@@ -117,7 +128,6 @@ def extract_text_from_pdf_bytes(pdf_bytes):
     for page in pdf_reader.pages:
         text += page.extract_text() + "\n"
     return text
-
 
 def load_embedded_pdfs():
     """Load all embedded PDFs from the EMBEDDED_PDFS dictionary"""
@@ -148,7 +158,6 @@ def load_embedded_pdfs():
     
     return all_chunks, loaded_files
 
-
 def retrieve_relevant_chunks(query, top_k=4):
     """Retrieve most relevant chunks"""
     if not vector_store:
@@ -164,12 +173,11 @@ def retrieve_relevant_chunks(query, top_k=4):
     scored_chunks.sort(key=lambda x: x['similarity'], reverse=True)
     return scored_chunks[:top_k]
 
-
 def query_openai(prompt, context=""):
     """Query OpenAI GPT model"""
     try:
         system_message = """You are Damodar, a helpful mining safety assistant. Answer questions based on the provided context from mining safety documents. 
-        Provide clear, accurate answers based on the context. If the context doesn't contain enough information, say so."""
+        Provide clear, accurate answers based on the context. If the context doesn't contain enough information, you can ans by yourself also."""
         
         user_message = f"""Context from documents:
 {context}
@@ -191,14 +199,10 @@ Question: {prompt}"""
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"OpenAI API error: {str(e)}")
 
-
-# Startup event
-@app.on_event("startup")
-async def startup_event():
+async def load_pdfs_on_startup():
     """Load PDFs on startup"""
     global vector_store, EMBEDDED_PDFS
     
-    print("Loading PDFs...")
     pdf_files = [f'Mining{i}.pdf' for i in range(1, 11)]
     
     for filename in pdf_files:
@@ -218,7 +222,6 @@ async def startup_event():
     else:
         print("\n⚠ Warning: No PDFs found!")
 
-
 # API Endpoints
 @app.get("/", response_model=dict)
 async def root():
@@ -233,7 +236,6 @@ async def root():
         }
     }
 
-
 @app.get("/health", response_model=HealthResponse)
 async def health_check():
     """Health check endpoint"""
@@ -242,7 +244,6 @@ async def health_check():
         pdfs_loaded=len(EMBEDDED_PDFS),
         chunks_available=len(vector_store)
     )
-
 
 @app.post("/query", response_model=QueryResponse)
 async def ask_question(request: QueryRequest):
@@ -287,7 +288,6 @@ async def ask_question(request: QueryRequest):
             detail=f"Error processing query: {str(e)}"
         )
 
-
 @app.post("/upload-pdf")
 async def upload_pdf(file: UploadFile = File(...)):
     """Upload a new PDF to the system"""
@@ -319,7 +319,6 @@ async def upload_pdf(file: UploadFile = File(...)):
             status_code=500,
             detail=f"Error uploading PDF: {str(e)}"
         )
-
 
 # Run the application
 if __name__ == "__main__":
